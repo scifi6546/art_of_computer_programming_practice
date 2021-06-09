@@ -59,6 +59,12 @@ impl BinaryTree {
             }
         }
     }
+    pub fn free(&mut self, index: usize) {
+        match self {
+            Self::Data(free) => *free = Free::Free,
+            Self::Root(trees) => trees[index & 1].free(index >> 1),
+        }
+    }
 }
 #[derive(Copy, Clone, PartialEq)]
 enum Free {
@@ -69,8 +75,8 @@ pub struct BuddyAllocator {
     free_tree: BinaryTree,
     data: [u8; Self::BLOCK_LEVELS * Self::MIN_BLOCK_SIZE],
 }
-pub struct Allocation<'a> {
-    data: &'a [u8],
+pub struct Allocation {
+    data: *mut u8,
     alloc_index: usize,
 }
 impl BuddyAllocator {
@@ -87,11 +93,14 @@ impl BuddyAllocator {
         let depth_in_tree = Self::BLOCK_LEVELS - Self::get_block_level(allocation_size);
         if let Some(alloc_index) = self.free_tree.get_first_free(depth_in_tree) {
             let mem_index = Self::get_alloc_memory_index(alloc_index);
-            let data = &self.data[mem_index..mem_index + allocation_size];
+            let data = unsafe { self.data.as_ptr().offset(mem_index as isize) as *mut u8 };
             Some(Allocation { data, alloc_index })
         } else {
             None
         }
+    }
+    pub fn free(&mut self, allocation: Allocation) {
+        self.free_tree.free(allocation.alloc_index);
     }
     fn get_alloc_memory_index(alloc_index: usize) -> usize {
         (0..Self::BLOCK_LEVELS)
@@ -124,7 +133,13 @@ mod tests {
     #[test]
     fn allocate() {
         let mut tree = BuddyAllocator::new();
-        let alloc = tree.alloc(10);
+        let alloc = tree.alloc(10).unwrap();
+    }
+    #[test]
+    fn dealloc() {
+        let mut tree = BuddyAllocator::new();
+        let alloc = tree.alloc(10).unwrap();
+        tree.free(alloc);
     }
     #[test]
     fn test_block_level() {
