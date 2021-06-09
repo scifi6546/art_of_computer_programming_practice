@@ -3,18 +3,6 @@ enum BinaryTree {
     Root(Box<[BinaryTree; 2]>),
 }
 impl BinaryTree {
-    pub fn get(&self, index: usize) -> Free {
-        match self {
-            Self::Data(free) => {
-                if index == 0 {
-                    *free
-                } else {
-                    panic!("invalid index")
-                }
-            }
-            Self::Root(data) => data[index & 1].get(index >> 1),
-        }
-    }
     /// Gets first element with free root and sets it to used
     pub fn get_first_free(&mut self, traverse_levels: usize) -> Option<usize> {
         match self {
@@ -75,14 +63,15 @@ pub struct BuddyAllocator {
     free_tree: BinaryTree,
     data: [u8; Self::BLOCK_LEVELS * Self::MIN_BLOCK_SIZE],
 }
+#[derive(Clone)]
 pub struct Allocation {
-    data: *mut u8,
+    pub data: *mut u8,
     alloc_index: usize,
 }
 impl BuddyAllocator {
-    const STARTING_BLOCK_POW: usize = 8;
+    const STARTING_BLOCK_POW: usize = 16;
     const MIN_BLOCK_SIZE: usize = 1 << Self::STARTING_BLOCK_POW;
-    const BLOCK_LEVELS: usize = 4;
+    const BLOCK_LEVELS: usize = 8;
     pub fn new() -> Self {
         Self {
             free_tree: BinaryTree::Data(Free::Free),
@@ -133,13 +122,26 @@ mod tests {
     #[test]
     fn allocate() {
         let mut tree = BuddyAllocator::new();
-        let alloc = tree.alloc(10).unwrap();
+        let _alloc = tree.alloc(10).unwrap();
     }
     #[test]
     fn dealloc() {
         let mut tree = BuddyAllocator::new();
         let alloc = tree.alloc(10).unwrap();
         tree.free(alloc);
+    }
+    #[test]
+    fn alloc_batches() {
+        let alloc_list = [100, 2341, 213, 1234, 1234, 12];
+        let mut tree = BuddyAllocator::new();
+        let mut allocs = alloc_list
+            .iter()
+            .map(|i| tree.alloc(*i).unwrap())
+            .collect::<Vec<_>>();
+        allocs
+            .drain(..)
+            .map(|alloc| tree.free(alloc))
+            .collect::<Vec<_>>();
     }
     #[test]
     fn test_block_level() {
